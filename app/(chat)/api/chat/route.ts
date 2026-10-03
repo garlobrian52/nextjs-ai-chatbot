@@ -15,6 +15,7 @@ import {
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { getChatModel } from "@/lib/ai/models";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
@@ -167,9 +168,11 @@ export async function POST(request: Request) {
           });
         }
 
+        const selectedModel = getChatModel(selectedChatModel);
         const isReasoningModel =
-          selectedChatModel.includes("reasoning") ||
-          selectedChatModel.includes("thinking");
+          selectedModel?.supportsReasoning ??
+          (selectedChatModel.includes("reasoning") ||
+            selectedChatModel.includes("thinking"));
 
         const result = streamText({
           model: getLanguageModel(selectedChatModel),
@@ -187,13 +190,16 @@ export async function POST(request: Request) {
           experimental_transform: isReasoningModel
             ? undefined
             : smoothStream({ chunking: "word" }),
-          providerOptions: isReasoningModel
-            ? {
-                anthropic: {
-                  thinking: { type: "enabled", budgetTokens: 10_000 },
-                },
-              }
-            : undefined,
+          // This repository uses the AI SDK beta, so keep the existing
+          // provider-native reasoning option but only send it to Anthropic.
+          providerOptions:
+            isReasoningModel && selectedModel?.provider === "anthropic"
+              ? {
+                  anthropic: {
+                    thinking: { type: "enabled", budgetTokens: 10_000 },
+                  },
+                }
+              : undefined,
           tools: {
             getWeather,
             createDocument: createDocument({ session, dataStream }),
