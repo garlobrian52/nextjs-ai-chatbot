@@ -1,5 +1,5 @@
 import { smoothStream, streamText } from "ai";
-import { updateDocumentPrompt } from "@/lib/ai/prompts";
+import { textArtifactPrompt, updateDocumentPrompt } from "@/lib/ai/prompts";
 import { getArtifactModel } from "@/lib/ai/providers";
 import { createDocumentHandler } from "@/lib/artifacts/server";
 
@@ -10,8 +10,7 @@ export const textDocumentHandler = createDocumentHandler<"text">({
 
     const { fullStream } = streamText({
       model: getArtifactModel("text"),
-      system:
-        "Write about the given topic. Markdown is supported. Use headings wherever appropriate.",
+      system: textArtifactPrompt,
       experimental_transform: smoothStream({ chunking: "word" }),
       prompt: title,
     });
