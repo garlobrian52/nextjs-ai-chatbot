@@ -42,8 +42,29 @@ export const requestSuggestions = ({
 
       const { partialOutputStream } = streamText({
         model: getArtifactModel(),
-        system:
-          "You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions.",
+        system: `
+You are an editorial assistant reviewing an existing document.
+
+Identify up to 5 high-value improvements.
+
+Prioritize:
+1. Clarity
+2. Grammar and correctness
+3. Concision
+4. Structure
+5. Tone and readability
+
+For each suggestion:
+- originalSentence: quote the complete sentence being changed.
+- suggestedSentence: provide a complete replacement sentence.
+- description: briefly explain why the change improves the document.
+
+Rules:
+- Do not invent information.
+- Do not suggest changes that are only stylistic preferences unless they materially improve readability.
+- Prefer meaningful improvements over minor wording changes.
+- Return no more than 5 suggestions.
+`,
         prompt: document.content,
         output: Output.array({
           element: z.object({
