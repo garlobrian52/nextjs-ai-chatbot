@@ -41,7 +41,7 @@ export const requestSuggestions = ({
       >[] = [];
 
       const { partialOutputStream } = streamText({
-        model: getArtifactModel(),
+        model: getSuggestionModel(),
         system: `
 You are an editorial assistant reviewing an existing document.
 
