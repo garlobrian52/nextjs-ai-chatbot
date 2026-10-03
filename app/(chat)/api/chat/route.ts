@@ -14,8 +14,8 @@ import {
 } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
+import { getChatModel, getReasoningBudget } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getChatModel } from "@/lib/ai/models";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
@@ -95,7 +95,6 @@ export async function POST(request: Request) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 
-    // Check if this is a tool approval flow (all messages sent)
     const isToolApprovalFlow = Boolean(messages);
 
     const chat = await getChatById({ id });
@@ -106,12 +105,10 @@ export async function POST(request: Request) {
       if (chat.userId !== session.user.id) {
         return new ChatSDKError("forbidden:chat").toResponse();
       }
-      // Only fetch messages if chat already exists and not tool approval
       if (!isToolApprovalFlow) {
         messagesFromDb = await getMessagesByChatId({ id });
       }
     } else if (message?.role === "user") {
-      // Save chat immediately with placeholder title
       await saveChat({
         id,
         userId: session.user.id,
@@ -119,11 +116,9 @@ export async function POST(request: Request) {
         visibility: selectedVisibilityType,
       });
 
-      // Start title generation in parallel (don't await)
       titlePromise = generateTitleFromUserMessage({ message });
     }
 
-    // Use all messages for tool approval, otherwise DB messages + new message
     const uiMessages = isToolApprovalFlow
       ? (messages as ChatMessage[])
       : [...convertToUIMessages(messagesFromDb), message as ChatMessage];
@@ -137,7 +132,6 @@ export async function POST(request: Request) {
       country,
     };
 
-    // Only save user messages to the database (not tool approval responses)
     if (message?.role === "user") {
       await saveMessages({
         messages: [
@@ -157,10 +151,8 @@ export async function POST(request: Request) {
     await createStreamId({ streamId, chatId: id });
 
     const stream = createUIMessageStream({
-      // Pass original messages for tool approval continuation
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
-        // Handle title generation in parallel
         if (titlePromise) {
           titlePromise.then((title) => {
             updateChatTitleById({ chatId: id, title });
@@ -173,6 +165,14 @@ export async function POST(request: Request) {
           selectedModel?.supportsReasoning ??
           (selectedChatModel.includes("reasoning") ||
             selectedChatModel.includes("thinking"));
+
+        // Use the latest user request to scale reasoning effort. Short/simple
+        // reasoning tasks get a small budget; debugging, architecture, and
+        // other explicitly complex tasks receive more compute.
+        const taskText = JSON.stringify(message?.parts ?? "");
+        const reasoningBudget = isReasoningModel
+          ? getReasoningBudget(taskText)
+          : undefined;
 
         const result = streamText({
           model: getLanguageModel(selectedChatModel),
@@ -190,13 +190,17 @@ export async function POST(request: Request) {
           experimental_transform: isReasoningModel
             ? undefined
             : smoothStream({ chunking: "word" }),
-          // This repository uses the AI SDK beta, so keep the existing
-          // provider-native reasoning option but only send it to Anthropic.
+          // AI SDK 6 uses providerOptions for reasoning configuration.
+          // Anthropic's manual thinking budget is now task-dependent:
+          // 2048 simple, 4096 moderate, 8192 deep.
           providerOptions:
             isReasoningModel && selectedModel?.provider === "anthropic"
               ? {
                   anthropic: {
-                    thinking: { type: "enabled", budgetTokens: 10_000 },
+                    thinking: {
+                      type: "enabled",
+                      budgetTokens: reasoningBudget,
+                    },
                   },
                 }
               : undefined,
@@ -226,17 +230,14 @@ export async function POST(request: Request) {
       generateId: generateUUID,
       onFinish: async ({ messages: finishedMessages }) => {
         if (isToolApprovalFlow) {
-          // For tool approval, update existing messages (tool state changed) and save new ones
           for (const finishedMsg of finishedMessages) {
             const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
             if (existingMsg) {
-              // Update existing message with new parts (tool state changed)
               await updateMessage({
                 id: finishedMsg.id,
                 parts: finishedMsg.parts,
               });
             } else {
-              // Save new message
               await saveMessages({
                 messages: [
                   {
@@ -252,7 +253,6 @@ export async function POST(request: Request) {
             }
           }
         } else if (finishedMessages.length > 0) {
-          // Normal flow - save all finished messages
           await saveMessages({
             messages: finishedMessages.map((currentMessage) => ({
               id: currentMessage.id,
@@ -294,7 +294,6 @@ export async function POST(request: Request) {
       return error.toResponse();
     }
 
-    // Check for Vercel AI Gateway credit card error
     if (
       error instanceof Error &&
       error.message?.includes(
