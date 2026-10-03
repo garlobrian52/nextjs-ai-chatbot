@@ -5,6 +5,7 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { isTestEnvironment } from "../constants";
+import type { ArtifactKind } from "@/components/artifact";
 
 const THINKING_SUFFIX_REGEX = /-thinking$/;
 
@@ -54,9 +55,24 @@ export function getTitleModel() {
   return gateway.languageModel("anthropic/claude-haiku-4.5");
 }
 
-export function getArtifactModel() {
+const ARTIFACT_MODELS: Record<ArtifactKind, string> = {
+  text: "anthropic/claude-haiku-4.5",
+  code: "anthropic/claude-sonnet-4.5",
+  sheet: "anthropic/claude-haiku-4.5",
+};
+
+export function getArtifactModel(kind: ArtifactKind = "text") {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel("artifact-model");
   }
+
+  return gateway.languageModel(ARTIFACT_MODELS[kind]);
+}
+
+export function getSuggestionModel() {
+  if (isTestEnvironment && myProvider) {
+    return myProvider.languageModel("artifact-model");
+  }
+
   return gateway.languageModel("anthropic/claude-haiku-4.5");
 }
