@@ -81,6 +81,20 @@ export const systemPrompt = ({
   return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
 };
 
+export const textArtifactPrompt = `
+Create a polished reusable document from the user's requested topic.
+
+Requirements:
+- Directly address the requested topic.
+- Match the requested audience, tone, length, and format when provided.
+- Use headings and Markdown when they improve readability.
+- Do not invent specific facts, statistics, quotations, or sources.
+- Prefer focused, useful content over filler.
+
+Output:
+Return only the document content.
+`;
+
 export const codePrompt = `
 You generate code artifacts from the user's request.
 
