@@ -109,7 +109,7 @@ export const chatModels: ChatModel[] = [
   {
     id: "xai/grok-code-fast-1-thinking",
     name: "Grok Code Fast",
-    provider: "xai",
+    provider: "reasoning",
     description: "Reasoning-focused option for challenging code tasks",
     tier: "reasoning",
     supportsTools: false,
@@ -123,6 +123,31 @@ export const modelById = new Map(
 
 export function getChatModel(modelId: string): ChatModel | undefined {
   return modelById.get(modelId);
+}
+
+/**
+ * Choose a reasoning budget from the task instead of paying the maximum
+ * reasoning cost on every reasoning request.
+ *
+ * These are starting policy values, not measured optimums. Tune them with
+ * the evaluation suite once representative production tasks are available.
+ */
+export function getReasoningBudget(taskText: string): number {
+  const text = taskText.toLowerCase();
+
+  const deepTask =
+    /architect|architecture|debug|root cause|complex|prove|proof|algorithm|refactor|security|migration|design system|multi-step/.test(
+      text
+    );
+
+  const moderateTask =
+    /analy[sz]e|compare|reason|tradeoff|plan|implement|code|calculate|research|explain/.test(
+      text
+    );
+
+  if (deepTask) return 8192;
+  if (moderateTask) return 4096;
+  return 2048;
 }
 
 // Group models by provider for UI
